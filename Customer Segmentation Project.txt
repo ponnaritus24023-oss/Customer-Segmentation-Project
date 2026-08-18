@@ -1,0 +1,577 @@
+# ============================================================
+# CUSTOMER SEGMENTATION PROJECT
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score
+
+# ------------------------------------------------------------
+# 1. LOAD DATA
+# ------------------------------------------------------------
+
+# Change this to your dataset filename
+df = pd.read_csv("customers.csv")
+
+print("First 5 rows:")
+print(df.head())
+
+print("\nDataset shape:", df.shape)
+
+print("\nColumn names:")
+print(df.columns.tolist())
+
+print("\nMissing values:")
+print(df.isnull().sum())
+
+
+# ------------------------------------------------------------
+# 2. DATA CLEANING
+# ------------------------------------------------------------
+
+# Remove duplicate records
+df = df.drop_duplicates()
+
+# Remove rows with missing values
+df = df.dropna()
+
+# Display basic statistics
+print("\nDataset statistics:")
+print(df.describe())
+
+
+# ------------------------------------------------------------
+# 3. CHECK CUSTOMER DATA
+# ------------------------------------------------------------
+
+# Example expected columns:
+#
+# CustomerID
+# Age
+# Gender
+# Income
+# Total_Purchases
+# Total_Spending
+# Frequency
+# Recency
+# Online_Purchases
+# Store_Purchases
+#
+# If your column names are different, modify them below.
+
+
+# ------------------------------------------------------------
+# 4. CREATE CUSTOMER FEATURES
+# ------------------------------------------------------------
+
+features = [
+    "Age",
+    "Income",
+    "Total_Purchases",
+    "Total_Spending",
+    "Frequency",
+    "Recency",
+    "Online_Purchases",
+    "Store_Purchases"
+]
+
+# Check whether all required columns exist
+missing_features = [col for col in features if col not in df.columns]
+
+if missing_features:
+    print("\nMissing columns:", missing_features)
+    raise ValueError(
+        "Please change the feature names in the 'features' list "
+        "to match your dataset."
+    )
+
+X = df[features].copy()
+
+
+# ------------------------------------------------------------
+# 5. HANDLE OUTLIERS
+# ------------------------------------------------------------
+
+# Optional: cap extreme values using the IQR method
+
+for column in features:
+
+    Q1 = X[column].quantile(0.25)
+    Q3 = X[column].quantile(0.75)
+
+    IQR = Q3 - Q1
+
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+
+    X[column] = X[column].clip(
+        lower_bound,
+        upper_bound
+    )
+
+
+# ------------------------------------------------------------
+# 6. STANDARDIZE FEATURES
+# ------------------------------------------------------------
+
+scaler = StandardScaler()
+
+X_scaled = scaler.fit_transform(X)
+
+print("\nScaled feature shape:", X_scaled.shape)
+
+
+# ------------------------------------------------------------
+# 7. FIND OPTIMAL NUMBER OF CLUSTERS
+# ------------------------------------------------------------
+
+inertia = []
+silhouette_scores = []
+
+K_range = range(2, 11)
+
+for k in K_range:
+
+    kmeans = KMeans(
+        n_clusters=k,
+        random_state=42,
+        n_init=10
+    )
+
+    labels = kmeans.fit_predict(X_scaled)
+
+    inertia.append(kmeans.inertia_)
+
+    silhouette_scores.append(
+        silhouette_score(X_scaled, labels)
+    )
+
+
+# ------------------------------------------------------------
+# 8. ELBOW METHOD
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+plt.plot(
+    K_range,
+    inertia,
+    marker="o"
+)
+
+plt.title("Elbow Method for Optimal K")
+plt.xlabel("Number of Clusters")
+plt.ylabel("Inertia")
+
+plt.grid(True)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 9. SILHOUETTE SCORE
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+plt.plot(
+    K_range,
+    silhouette_scores,
+    marker="o",
+    color="green"
+)
+
+plt.title("Silhouette Score")
+plt.xlabel("Number of Clusters")
+plt.ylabel("Silhouette Score")
+
+plt.grid(True)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 10. SELECT NUMBER OF CLUSTERS
+# ------------------------------------------------------------
+
+# You can change this based on the elbow/silhouette plots.
+optimal_k = 4
+
+kmeans = KMeans(
+    n_clusters=optimal_k,
+    random_state=42,
+    n_init=10
+)
+
+df["Cluster"] = kmeans.fit_predict(X_scaled)
+
+
+# ------------------------------------------------------------
+# 11. CUSTOMER SEGMENT SUMMARY
+# ------------------------------------------------------------
+
+cluster_summary = df.groupby("Cluster")[features].mean()
+
+print("\nCustomer Segment Summary:")
+print(cluster_summary.round(2))
+
+
+# ------------------------------------------------------------
+# 12. NUMBER OF CUSTOMERS IN EACH SEGMENT
+# ------------------------------------------------------------
+
+cluster_counts = df["Cluster"].value_counts().sort_index()
+
+print("\nCustomers in each segment:")
+print(cluster_counts)
+
+
+# ------------------------------------------------------------
+# 13. VISUALIZE CUSTOMER SEGMENTS
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 6))
+
+sns.countplot(
+    data=df,
+    x="Cluster",
+    hue="Cluster",
+    palette="Set2",
+    legend=False
+)
+
+plt.title("Number of Customers in Each Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Number of Customers")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 14. PCA FOR 2D VISUALIZATION
+# ------------------------------------------------------------
+
+pca = PCA(n_components=2)
+
+X_pca = pca.fit_transform(X_scaled)
+
+df["PCA1"] = X_pca[:, 0]
+df["PCA2"] = X_pca[:, 1]
+
+
+plt.figure(figsize=(10, 7))
+
+sns.scatterplot(
+    data=df,
+    x="PCA1",
+    y="PCA2",
+    hue="Cluster",
+    palette="Set1",
+    s=100,
+    alpha=0.8
+)
+
+plt.title("Customer Segmentation Using K-Means")
+plt.xlabel("Principal Component 1")
+plt.ylabel("Principal Component 2")
+
+plt.legend(title="Customer Segment")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 15. SPENDING BY SEGMENT
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+sns.barplot(
+    data=df,
+    x="Cluster",
+    y="Total_Spending",
+    hue="Cluster",
+    palette="viridis",
+    legend=False
+)
+
+plt.title("Average Spending by Customer Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Average Total Spending")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 16. INCOME BY SEGMENT
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+sns.barplot(
+    data=df,
+    x="Cluster",
+    y="Income",
+    hue="Cluster",
+    palette="coolwarm",
+    legend=False
+)
+
+plt.title("Average Income by Customer Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Average Income")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 17. PURCHASE FREQUENCY BY SEGMENT
+# ------------------------------------------------------------
+
+plt.figure(figsize=(8, 5))
+
+sns.barplot(
+    data=df,
+    x="Cluster",
+    y="Frequency",
+    hue="Cluster",
+    palette="magma",
+    legend=False
+)
+
+plt.title("Purchase Frequency by Customer Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Average Purchase Frequency")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 18. ONLINE VS STORE PURCHASES
+# ------------------------------------------------------------
+
+segment_purchase = df.groupby("Cluster")[
+    ["Online_Purchases", "Store_Purchases"]
+].mean()
+
+segment_purchase.plot(
+    kind="bar",
+    figsize=(10, 6)
+)
+
+plt.title("Online vs Store Purchases by Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Average Purchases")
+
+plt.xticks(rotation=0)
+
+plt.legend(
+    title="Purchase Type"
+)
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 19. GENDER DISTRIBUTION
+# ------------------------------------------------------------
+
+if "Gender" in df.columns:
+
+    gender_segment = pd.crosstab(
+        df["Cluster"],
+        df["Gender"],
+        normalize="index"
+    ) * 100
+
+    print("\nGender distribution by segment:")
+    print(gender_segment.round(2))
+
+    gender_segment.plot(
+        kind="bar",
+        stacked=True,
+        figsize=(10, 6)
+    )
+
+    plt.title("Gender Distribution by Customer Segment")
+    plt.xlabel("Customer Segment")
+    plt.ylabel("Percentage")
+
+    plt.xticks(rotation=0)
+
+    plt.legend(title="Gender")
+
+    plt.show()
+
+
+# ------------------------------------------------------------
+# 20. AGE DISTRIBUTION
+# ------------------------------------------------------------
+
+plt.figure(figsize=(10, 6))
+
+sns.boxplot(
+    data=df,
+    x="Cluster",
+    y="Age",
+    hue="Cluster",
+    palette="Set3",
+    legend=False
+)
+
+plt.title("Age Distribution by Customer Segment")
+plt.xlabel("Customer Segment")
+plt.ylabel("Age")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 21. HEATMAP OF SEGMENT CHARACTERISTICS
+# ------------------------------------------------------------
+
+heatmap_data = df.groupby("Cluster")[features].mean()
+
+# Standardize the segment averages for easier comparison
+heatmap_scaled = (
+    heatmap_data - heatmap_data.mean()
+) / heatmap_data.std()
+
+plt.figure(figsize=(12, 7))
+
+sns.heatmap(
+    heatmap_scaled,
+    annot=True,
+    cmap="RdYlGn",
+    center=0,
+    fmt=".2f"
+)
+
+plt.title("Customer Segment Characteristics")
+plt.xlabel("Customer Features")
+plt.ylabel("Customer Segment")
+
+plt.show()
+
+
+# ------------------------------------------------------------
+# 22. CREATE SEGMENT LABELS
+# ------------------------------------------------------------
+
+# First inspect the averages:
+print("\nDetailed segment characteristics:")
+print(
+    df.groupby("Cluster")[features]
+    .mean()
+    .round(2)
+)
+
+
+# Example labels.
+# IMPORTANT:
+# These should be adjusted after looking at your results.
+
+segment_names = {
+    0: "High Value Customers",
+    1: "Budget Customers",
+    2: "Occasional Customers",
+    3: "Frequent Customers"
+}
+
+df["Segment"] = df["Cluster"].map(segment_names)
+
+
+# ------------------------------------------------------------
+# 23. FINAL SEGMENT REPORT
+# ------------------------------------------------------------
+
+final_report = df.groupby("Segment").agg({
+
+    "Age": "mean",
+    "Income": "mean",
+    "Total_Purchases": "mean",
+    "Total_Spending": "mean",
+    "Frequency": "mean",
+    "Recency": "mean",
+    "Online_Purchases": "mean",
+    "Store_Purchases": "mean"
+
+}).round(2)
+
+print("\n======================================")
+print("FINAL CUSTOMER SEGMENT REPORT")
+print("======================================")
+
+print(final_report)
+
+
+# ------------------------------------------------------------
+# 24. SAVE RESULTS
+# ------------------------------------------------------------
+
+df.to_csv(
+    "customer_segments.csv",
+    index=False
+)
+
+final_report.to_csv(
+    "customer_segment_summary.csv"
+)
+
+print("\nFiles saved successfully:")
+print("1. customer_segments.csv")
+print("2. customer_segment_summary.csv")
+
+
+# ------------------------------------------------------------
+# 25. CUSTOMER SEGMENT PROFILE
+# ------------------------------------------------------------
+
+for segment in df["Segment"].unique():
+
+    segment_data = df[df["Segment"] == segment]
+
+    print("\n--------------------------------------")
+    print("Segment:", segment)
+    print("--------------------------------------")
+
+    print(
+        "Customers:",
+        len(segment_data)
+    )
+
+    print(
+        "Average Age:",
+        round(segment_data["Age"].mean(), 2)
+    )
+
+    print(
+        "Average Income:",
+        round(segment_data["Income"].mean(), 2)
+    )
+
+    print(
+        "Average Spending:",
+        round(segment_data["Total_Spending"].mean(), 2)
+    )
+
+    print(
+        "Average Purchases:",
+        round(segment_data["Total_Purchases"].mean(), 2)
+    )
+
+    print(
+        "Average Frequency:",
+        round(segment_data["Frequency"].mean(), 2)
+    )
+
+    print(
+        "Average Recency:",
+        round(segment_data["Recency"].mean(), 2)
+    )
